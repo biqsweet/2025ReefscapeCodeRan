@@ -10,6 +10,7 @@ import frc.robot.poseestimation.photoncamera.PhotonCameraIO;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import static frc.lib.util.QuickSortHandler.sort;
 import static frc.robot.RobotContainer.SWERVE;
 import static frc.robot.commands.pathfinding.PathfindingCommands.IS_ALIGNING_REEF;
+import static frc.robot.commands.pathfinding.PathfindingConstants.Branch.*;
 import static frc.robot.poseestimation.poseestimator.PoseEstimatorConstants.*;
 import static frc.robot.subsystems.swerve.SwerveConstants.SWERVE_KINEMATICS;
 
@@ -51,7 +53,9 @@ public class PoseEstimator implements AutoCloseable {
 
     public void periodic() {
         updateFromAprilTagCameras();
+
         field.setRobotPose(getCurrentPose());
+        field.getObject("branch_trajectory").setPoses(field.getRobotPose(), RIGHT_BRANCH.getBranchPose());
     }
 
     public void resetPose(Pose2d newPose) {
@@ -133,12 +137,13 @@ public class PoseEstimator implements AutoCloseable {
     }
 
     private void updateFromAprilTagCameras() {
+        final PhotonCameraIO[] newResultCameras = getCamerasWithResults();
+
         sort(aprilTagCameras, PhotonCameraIO::getLastResultTimestamp);
 
-        for (PhotonCameraIO aprilTagCamera : aprilTagCameras) {
-            if (!aprilTagCamera.hasNewResult()) return;
-
-            if (aprilTagCamera.getName() == "REAR_LEFT" || aprilTagCamera.getName() == "REAR_RIGHT" && IS_ALIGNING_REEF)
+        for (PhotonCameraIO aprilTagCamera : newResultCameras) {
+            if (aprilTagCamera.getName() == "Cameras/REAR_LEFT" ||
+                    aprilTagCamera.getName() == "Cameras/REAR_RIGHT" && IS_ALIGNING_REEF)
                 return;
 
             addVisionObservation(
@@ -147,6 +152,19 @@ public class PoseEstimator implements AutoCloseable {
                     aprilTagCamera.getStandardDeviations()
             );
         }
+    }
+
+    private PhotonCameraIO[] getCamerasWithResults() {
+        final PhotonCameraIO[] camerasWithNewResult = new PhotonCameraIO[aprilTagCameras.length];
+        int index = 0;
+
+        for (PhotonCameraIO aprilTagCamera : aprilTagCameras) {
+            if (!aprilTagCamera.hasNewResult()) continue;
+
+            camerasWithNewResult[index++] = aprilTagCamera;
+        }
+
+        return Arrays.copyOf(camerasWithNewResult, index);
     }
 
     private Pose2d getOdometryPoseAtTimestamp(double timestamp) {
