@@ -7,17 +7,20 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.poseestimation.camera.Camera;
 import frc.robot.poseestimation.camera.EstimateData;
 import frc.robot.poseestimation.quest.Quest;
 import frc.robot.subsystems.swerve.SwerveConstants;
+import gg.questnav.questnav.PoseFrame;
 import org.littletonrobotics.junction.AutoLogOutput;
 import org.littletonrobotics.junction.Logger;
 
 import java.util.Map;
 
+import static frc.robot.RobotContainer.QUEST;
 import static frc.robot.poseestimation.PoseEstimatorConstants.*;
 
 public class PoseEstimator {
@@ -43,14 +46,15 @@ public class PoseEstimator {
     private final Camera[] cameras;
 
     public PoseEstimator(Camera[] cameras, Quest quest) {
-        this.quest = quest;
         this.cameras = cameras;
+        this.quest = quest;
 
         initialize();
     }
 
     public void resetPose(Pose2d pose) {
         poseEstimator.resetPose(pose);
+        QUEST.setPose(pose);
     }
 
     public Rotation2d getCurrentAngle() {
@@ -63,8 +67,8 @@ public class PoseEstimator {
     }
 
     public void periodic() {
-        updateFromVision();
         updateFromQuest();
+        updateFromVision();
 
         field.setRobotPose(getCurrentPose());
     }
@@ -74,13 +78,17 @@ public class PoseEstimator {
 
         quest.refreshInputs();
 
-        if (!quest.isResultValid()) return;
+        if (!quest.isConnected() || !quest.isResultValid()) return;
 
-        poseEstimator.addVisionMeasurement(
-                quest.getEstimatedPose(),
-                quest.getTimestamp(),
-                QUEST_STD_DEVS
-        );
+        for(int i = 0; i < quest.getEstimatedPoses().length; i++) {
+            final PoseFrame current = quest.getEstimatedPoses()[i];
+
+            poseEstimator.addVisionMeasurement(
+                    current.questPose3d().toPose2d(),
+                    current.dataTimestamp(),
+                    QUEST_STD_DEVS
+            );
+        }
     }
 
     public void updateFromVision() {
@@ -97,6 +105,10 @@ public class PoseEstimator {
                         estimate.timestamp(),
                         estimate.getStandardDeviations()
                 );
+
+                if (quest.isConnected() && (estimate.isHighQuality() || DriverStation.isDisabled())) {
+                    quest.setPose(estimate.pose().toPose2d());
+                }
             }
         }
     }
